@@ -90,10 +90,14 @@ const approveOrRejectCourse = (coursesCollection) => async (req, res) => {
     const id = req.params.id;
     const { action } = req.body;
 
-    if (!action || !["approve", "reject", "unpublish", "publish"].includes(action)) {
+    if (
+      !action ||
+      !["approve", "reject", "unpublish", "publish"].includes(action)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid action. Must be 'approve', 'reject', 'unpublish', or 'publish'.",
+        message:
+          "Invalid action. Must be 'approve', 'reject', 'unpublish', or 'publish'.",
       });
     }
 
@@ -122,7 +126,10 @@ const approveOrRejectCourse = (coursesCollection) => async (req, res) => {
     }
 
     // Guard: 'publish' can only be applied to unpublished/rejected courses
-    if (action === "publish" && ![ "unpublished", "rejected"].includes(course.status)) {
+    if (
+      action === "publish" &&
+      !["unpublished", "rejected"].includes(course.status)
+    ) {
       return res.status(400).json({
         success: false,
         message: `Cannot publish a course with status '${course.status}'.`,
