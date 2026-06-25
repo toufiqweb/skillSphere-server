@@ -179,15 +179,42 @@ const getCourseById = (coursesCollection) => async (req, res) => {
 const deleteCourse = (coursesCollection) => async (req, res) => {
   try {
     const id = req.params.id;
+    const clientInstructorId = req.headers["x-instructor-id"] || req.headers["instructorid"] || req.body?.instructorId || req.query?.instructorId;
+
+    if (!clientInstructorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing instructorId for security validation.",
+      });
+    }
 
     // Try searching by numeric id first
     let query = { id: parseInt(id, 10) };
-    let result = await coursesCollection.deleteOne(query);
+    let course = await coursesCollection.findOne(query);
 
     // Fallback to ObjectId if it's a valid MongoDB ID
-    if (result.deletedCount === 0 && ObjectId.isValid(id)) {
-      result = await coursesCollection.deleteOne({ _id: new ObjectId(id) });
+    if (!course && ObjectId.isValid(id)) {
+      query = { _id: new ObjectId(id) };
+      course = await coursesCollection.findOne(query);
     }
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found.",
+      });
+    }
+
+    // Security Check: Fetch the course first to verify if course.instructor.instructorId === clientInstructorId
+    const courseInstructorId = course.instructor?.instructorId;
+    if (courseInstructorId !== clientInstructorId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized! You can only delete your own courses.",
+      });
+    }
+
+    const result = await coursesCollection.deleteOne(query);
 
     if (result.deletedCount > 0) {
       res.status(200).json({ success: true, message: "Course deleted successfully" });
@@ -269,10 +296,78 @@ const getCoursesByInstructor = (coursesCollection) => async (req, res) => {
   }
 };
 
+// 6. PATCH - Update course details (/api/courses/:id)
+const updateCourse = (coursesCollection) => async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { instructorId: clientInstructorId, ...updateFields } = req.body;
+
+    if (!clientInstructorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing instructorId for security validation.",
+      });
+    }
+
+    // Find course first to verify ownership
+    let query = { id: parseInt(id, 10) };
+    let course = await coursesCollection.findOne(query);
+
+    // Fallback to ObjectId if it's a valid MongoDB ID
+    if (!course && ObjectId.isValid(id)) {
+      query = { _id: new ObjectId(id) };
+      course = await coursesCollection.findOne(query);
+    }
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found.",
+      });
+    }
+
+    // Verify ownership: clientInstructorId must match course instructorId
+    const courseInstructorId = course.instructor?.instructorId;
+    if (courseInstructorId !== clientInstructorId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized! You can only edit your own courses.",
+      });
+    }
+
+    // Remove immutable fields if present
+    delete updateFields._id;
+    delete updateFields.id;
+    delete updateFields.instructor;
+
+    // Update using $set
+    const result = await coursesCollection.updateOne(query, {
+      $set: {
+        ...updateFields,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Course updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("PATCH Course Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while updating the course.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createCourse,
   getCourses,
   getCourseById,
   deleteCourse,
   getCoursesByInstructor,
+  updateCourse,
 };
