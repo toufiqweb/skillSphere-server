@@ -44,11 +44,13 @@ async function run() {
       getCourseById,
       deleteCourse,
       getCoursesByInstructor,
-      updateCourse
+      updateCourse,
+      getPublicCourses
     } = require("./actions/course");
 
     app.post("/api/courses", createCourse(coursesCollection));
     app.get("/api/courses", getCourses(coursesCollection));
+    app.get("/api/public/courses", getPublicCourses(coursesCollection));
     app.get("/api/courses/:id", getCourseById(coursesCollection));
     app.delete("/api/courses/:id", deleteCourse(coursesCollection));
     app.get(

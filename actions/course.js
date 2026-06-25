@@ -363,6 +363,70 @@ const updateCourse = (coursesCollection) => async (req, res) => {
   }
 };
 
+// 7. GET - Get only published courses with query parameters (/api/public/courses)
+const getPublicCourses = (coursesCollection) => async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 12;
+    const sortBy = req.query.sortBy || req.query.sort || "";
+
+    // 1. Base Query Enforcement: Hardcode status: "published"
+    const query = { status: "published" };
+
+    // 2. Dynamically Merge Incoming Frontend Filters
+    if (req.query.search) {
+      query.title = { $regex: req.query.search, $options: "i" };
+    }
+
+    if (req.query.category && req.query.category.toLowerCase() !== "all") {
+      query.category = req.query.category;
+    }
+
+    if (req.query.level && req.query.level.toLowerCase() !== "all") {
+      query.level = req.query.level;
+    }
+
+    // 3. Sorting Logic based on sortBy
+    let sortOption = {};
+    if (sortBy === "rating") sortOption = { rating: -1 };
+    else if (sortBy === "students") sortOption = { students: -1 };
+    else if (sortBy === "price-low") sortOption = { price: 1 };
+    else if (sortBy === "price-high") sortOption = { price: -1 };
+    else sortOption = { createdAt: -1 }; // Default sort by newest
+
+    // Pagination calculations
+    const skip = (page - 1) * limit;
+
+    // 4. Count and Fetch using the exact modified query object
+    const totalCourses = await coursesCollection.countDocuments(query);
+    const result = await coursesCollection
+      .find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    res.status(200).json({
+      success: true,
+      message: "Public courses fetched successfully",
+      data: result,
+      meta: {
+        totalCourses,
+        totalPages: Math.ceil(totalCourses / limit) || 1,
+        currentPage: page,
+        limit,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching public courses:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while fetching public courses",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createCourse,
   getCourses,
@@ -370,4 +434,5 @@ module.exports = {
   deleteCourse,
   getCoursesByInstructor,
   updateCourse,
+  getPublicCourses,
 };
