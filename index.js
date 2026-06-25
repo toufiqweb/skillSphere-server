@@ -45,7 +45,8 @@ async function run() {
       deleteCourse,
       getCoursesByInstructor,
       updateCourse,
-      getPublicCourses
+      getPublicCourses,
+      toggleCourseStatus
     } = require("./actions/course");
 
     app.post("/api/courses", createCourse(coursesCollection));
@@ -58,6 +59,7 @@ async function run() {
       getCoursesByInstructor(coursesCollection)
     );
     app.patch("/api/courses/:id", updateCourse(coursesCollection));
+    app.patch("/api/courses/:id/toggle-status", toggleCourseStatus(coursesCollection));
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(

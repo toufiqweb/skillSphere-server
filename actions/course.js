@@ -427,6 +427,90 @@ const getPublicCourses = (coursesCollection) => async (req, res) => {
   }
 };
 
+// 8. PATCH - Toggle course status (/api/courses/:id/toggle-status)
+const toggleCourseStatus = (coursesCollection) => async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { action } = req.body;
+    const clientInstructorId = req.headers["x-instructor-id"] || req.headers["instructorid"];
+
+    if (!clientInstructorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing instructorId in headers for security validation.",
+      });
+    }
+
+    if (!action) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing action parameter in request body.",
+      });
+    }
+
+    // Find course first to verify ownership
+    let query = { id: parseInt(id, 10) };
+    let course = await coursesCollection.findOne(query);
+
+    if (!course && ObjectId.isValid(id)) {
+      query = { _id: new ObjectId(id) };
+      course = await coursesCollection.findOne(query);
+    }
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found.",
+      });
+    }
+
+    // Verify ownership
+    const courseInstructorId = course.instructor?.instructorId;
+    if (courseInstructorId !== clientInstructorId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized! You can only modify the status of your own courses.",
+      });
+    }
+
+    // Map action to target status
+    let newStatus = "";
+    if (action === "publish") {
+      newStatus = "published";
+    } else if (action === "unpublish") {
+      newStatus = "unpublished";
+    } else if (action === "submit") {
+      newStatus = "pending";
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid action type. Expected 'publish', 'unpublish', or 'submit'. Received: '${action}'`,
+      });
+    }
+
+    // Update using $set
+    await coursesCollection.updateOne(query, {
+      $set: {
+        status: newStatus,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Course status updated to '${newStatus}' successfully!`,
+      status: newStatus,
+    });
+  } catch (error) {
+    console.error("PATCH Toggle Status Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while toggling the course status.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createCourse,
   getCourses,
@@ -435,4 +519,5 @@ module.exports = {
   getCoursesByInstructor,
   updateCourse,
   getPublicCourses,
+  toggleCourseStatus,
 };
