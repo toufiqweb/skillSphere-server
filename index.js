@@ -71,6 +71,13 @@ async function run() {
     app.get("/api/admin/courses", adminMiddleware, getAllCoursesForAdmin(coursesCollection));
     app.patch("/api/admin/courses/:id/approval", adminMiddleware, approveOrRejectCourse(coursesCollection));
 
+    // Admin User Management Routes
+    const { getAllUsers, updateUserRole, toggleUserBlock } = require("./actions/adminUsers");
+
+    app.get("/api/admin/users", adminMiddleware, getAllUsers(usersCollection));
+    app.patch("/api/admin/users/:id/role", adminMiddleware, updateUserRole(usersCollection));
+    app.patch("/api/admin/users/:id/block", adminMiddleware, toggleUserBlock(usersCollection));
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
