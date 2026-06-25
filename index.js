@@ -41,12 +41,19 @@ async function run() {
     const { 
       createCourse, 
       getCourses, 
-      getCourseById 
+      getCourseById,
+      deleteCourse,
+      getCoursesByInstructor
     } = require("./actions/course");
 
     app.post("/api/courses", createCourse(coursesCollection));
     app.get("/api/courses", getCourses(coursesCollection));
     app.get("/api/courses/:id", getCourseById(coursesCollection));
+    app.delete("/api/courses/:id", deleteCourse(coursesCollection));
+    app.get(
+      "/api/courses/instructor/:instructorId",
+      getCoursesByInstructor(coursesCollection)
+    );
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
