@@ -49,17 +49,20 @@ async function run() {
       toggleCourseStatus
     } = require("./actions/course");
 
-    app.post("/api/courses", createCourse(coursesCollection));
+    const { isNotBlocked } = require("./middlewares/isNotBlocked");
+    const blockCheck = isNotBlocked(usersCollection);
+
+    app.post("/api/courses", blockCheck, createCourse(coursesCollection));
     app.get("/api/courses", getCourses(coursesCollection));
     app.get("/api/public/courses", getPublicCourses(coursesCollection));
     app.get("/api/courses/:id", getCourseById(coursesCollection));
-    app.delete("/api/courses/:id", deleteCourse(coursesCollection));
+    app.delete("/api/courses/:id", blockCheck, deleteCourse(coursesCollection));
     app.get(
       "/api/courses/instructor/:instructorId",
       getCoursesByInstructor(coursesCollection)
     );
-    app.patch("/api/courses/:id", updateCourse(coursesCollection));
-    app.patch("/api/courses/:id/toggle-status", toggleCourseStatus(coursesCollection));
+    app.patch("/api/courses/:id", blockCheck, updateCourse(coursesCollection));
+    app.patch("/api/courses/:id/toggle-status", blockCheck, toggleCourseStatus(coursesCollection));
 
     // Admin Routes
     const { isAdmin } = require("./middlewares/isAdmin");

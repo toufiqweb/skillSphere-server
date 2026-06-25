@@ -207,7 +207,9 @@ const deleteCourse = (coursesCollection) => async (req, res) => {
 
     // Security Check: Fetch the course first to verify if course.instructor.instructorId === clientInstructorId
     const courseInstructorId = course.instructor?.instructorId;
-    if (courseInstructorId !== clientInstructorId) {
+    const userRole = req.body?.userRole;
+    
+    if (userRole !== "admin" && courseInstructorId !== clientInstructorId) {
       return res.status(403).json({
         success: false,
         message: "Unauthorized! You can only delete your own courses.",
