@@ -60,6 +60,17 @@ async function run() {
     );
     app.patch("/api/courses/:id", updateCourse(coursesCollection));
     app.patch("/api/courses/:id/toggle-status", toggleCourseStatus(coursesCollection));
+
+    // Admin Routes
+    const { isAdmin } = require("./middlewares/isAdmin");
+    const { getPendingCourses, getAllCoursesForAdmin, approveOrRejectCourse } = require("./actions/admin");
+
+    const adminMiddleware = isAdmin(usersCollection);
+
+    app.get("/api/admin/courses/pending", adminMiddleware, getPendingCourses(coursesCollection));
+    app.get("/api/admin/courses", adminMiddleware, getAllCoursesForAdmin(coursesCollection));
+    app.patch("/api/admin/courses/:id/approval", adminMiddleware, approveOrRejectCourse(coursesCollection));
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
