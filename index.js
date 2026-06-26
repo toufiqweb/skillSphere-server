@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 // All requires at top level — never inside async functions
 const { isAdmin } = require("./middlewares/isAdmin");
@@ -26,6 +26,11 @@ const {
   updateUserRole,
   toggleUserBlock,
 } = require("./actions/adminUsers");
+const {
+  toggleWishlist,
+  getWishlist,
+  getWishlistIds,
+} = require("./actions/wishlist");
 
 const app = express();
 
@@ -106,6 +111,44 @@ const adminMiddleware = async (req, res, next) => {
   try {
     const { db } = await connectToDatabase();
     return isAdmin(db.collection("user"))(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Verify the caller is a logged-in student
+const studentMiddleware = async (req, res, next) => {
+  try {
+    const rawUserId = req.headers["x-user-id"] || req.headers["userid"];
+    if (!rawUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Missing user ID.",
+      });
+    }
+
+    const { db } = await connectToDatabase();
+    let user = null;
+
+    if (ObjectId.isValid(rawUserId)) {
+      user = await db.collection("user").findOne({ _id: new ObjectId(rawUserId) });
+    }
+    if (!user) {
+      user = await db.collection("user").findOne({ id: parseInt(rawUserId, 10) });
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    if (user.role !== "student") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Students only.",
+      });
+    }
+
+    req.user = user;
+    next();
   } catch (err) {
     next(err);
   }
@@ -211,6 +254,30 @@ app.patch("/api/admin/users/:id/role", adminMiddleware, async (req, res) => {
 app.patch("/api/admin/users/:id/block", adminMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
   return toggleUserBlock(db.collection("user"))(req, res);
+});
+
+// ── Student Wishlist Routes ───────────────────────────────────────────────────
+// POST   /api/student/wishlist/toggle  — add or remove a course from wishlist
+// GET    /api/student/wishlist/ids     — lightweight: return only courseId strings
+// GET    /api/student/wishlist         — full wishlist with populated course data
+
+app.post("/api/student/wishlist/toggle", studentMiddleware, async (req, res) => {
+  const { db } = await connectToDatabase();
+  return toggleWishlist(
+    db.collection("wishlist"),
+    db.collection("courses")
+  )(req, res);
+});
+
+// IMPORTANT: /ids must be declared before the bare /wishlist GET
+app.get("/api/student/wishlist/ids", studentMiddleware, async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getWishlistIds(db.collection("wishlist"))(req, res);
+});
+
+app.get("/api/student/wishlist", studentMiddleware, async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getWishlist(db.collection("wishlist"))(req, res);
 });
 
 // ── Global Error Handler ──────────────────────────────────────────────────────
