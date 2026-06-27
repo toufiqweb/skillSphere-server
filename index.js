@@ -280,6 +280,103 @@ app.get("/api/student/wishlist", studentMiddleware, async (req, res) => {
   return getWishlist(db.collection("wishlist"))(req, res);
 });
 
+// ── Enrollment Routes ────────────────────────────────────────────────────────
+app.get("/api/enrollments/check", async (req, res) => {
+  try {
+    const { userId, courseId } = req.query;
+    if (!userId || !courseId) {
+      return res.status(400).json({ isEnrolled: false, message: "Missing params" });
+    }
+    const { db } = await connectToDatabase();
+    const enrollmentsCollection = db.collection("enrollments");
+    
+    const existing = await enrollmentsCollection.findOne({ userId, courseId });
+    return res.json({ isEnrolled: !!existing });
+  } catch (err) {
+    console.error("GET /api/enrollments/check error:", err);
+    return res.status(500).json({ isEnrolled: false, message: err.message });
+  }
+});
+
+// ── Transactions (Course Enrollment) ─────────────────────────────────────────
+// Mirrors RapidRole's POST /api/subscriptions pattern exactly.
+// Called by the Next.js createTransaction() Server Action after Stripe payment.
+app.post("/api/transactions", async (req, res) => {
+  try {
+    const {
+      courseId,
+      userId,
+      instructorId,
+      amount,
+      stripeSessionId,
+      paymentStatus,
+      paymentMethod,
+      customerEmail,
+    } = req.body;
+
+    if (!courseId || !userId || !stripeSessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: courseId, userId, stripeSessionId.",
+      });
+    }
+
+    const { db } = await connectToDatabase();
+    const transactionsCollection = db.collection("transactions");
+    const enrollmentsCollection = db.collection("enrollments");
+    const coursesCollection = db.collection("courses");
+    const { ObjectId } = require("mongodb");
+
+    // ── 1. Duplicate Transaction Protection ──────────────────────────────────
+    // Prevent duplicate DB writes on browser refresh or double-submission.
+    const existingTransaction = await transactionsCollection.findOne({ stripeSessionId });
+    if (existingTransaction) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment already recorded",
+      });
+    }
+
+    // ── 2. Save Transaction ──────────────────────────────────────────────────
+    const transactionDoc = {
+      stripeSessionId,
+      userId,
+      userEmail: customerEmail || "",
+      courseId,
+      instructorId: instructorId || "",
+      amount: Number(amount) || 0,
+      paymentStatus: paymentStatus || "paid",
+      paymentMethod: paymentMethod || "card",
+      createdAt: new Date().toISOString(),
+    };
+    const txResult = await transactionsCollection.insertOne(transactionDoc);
+
+    // ── 3. Save Enrollment ───────────────────────────────────────────────────
+    const enrollmentDoc = {
+      userId,
+      userEmail: customerEmail || "",
+      courseId,
+      transactionId: txResult.insertedId.toString(),
+      status: "active",
+      enrolledAt: new Date().toISOString(),
+    };
+    await enrollmentsCollection.insertOne(enrollmentDoc);
+
+    // ── 4. Update Course Enrollment Count ────────────────────────────────────
+    await coursesCollection.updateOne(
+      { _id: new ObjectId(courseId) },
+      { $inc: { enrolledStudents: 1 } }
+    );
+
+    return res.json({ success: true, message: "Enrolled successfully." });
+  } catch (err) {
+    console.error("POST /api/transactions error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "Internal server error" });
+  }
+});
+
 // ── Global Error Handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
