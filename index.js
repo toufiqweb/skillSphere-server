@@ -34,6 +34,7 @@ const {
 const { getEnrolledCourses } = require("./actions/myLearning");
 const { submitCourseReviewAndRating } = require("./actions/courseReview");
 const { getCourseReviews } = require("./actions/getReviews");
+const { updateUserProfile } = require("./actions/userProfile");
 
 const app = express();
 
@@ -172,6 +173,11 @@ app.get("/api/users", async (req, res) => {
     console.error("GET /api/users error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+app.put("/api/user/profile", async (req, res) => {
+  const { db } = await connectToDatabase();
+  return updateUserProfile(db.collection("user"))(req, res);
 });
 
 // ── Course Routes ─────────────────────────────────────────────────────────────
