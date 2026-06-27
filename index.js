@@ -36,6 +36,7 @@ const { submitCourseReviewAndRating } = require("./actions/courseReview");
 const { getCourseReviews } = require("./actions/getReviews");
 const { updateUserProfile } = require("./actions/userProfile");
 const { getInstructorEnrolledStudents } = require("./actions/instructorStudents");
+const { getInstructorAnalytics } = require("./actions/instructorAnalytics");
 
 const app = express();
 
@@ -239,6 +240,14 @@ app.patch("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
 app.get("/api/instructor/course-students", async (req, res) => {
   const { db } = await connectToDatabase();
   return getInstructorEnrolledStudents(db.collection("transactions"))(req, res);
+});
+
+app.get("/api/instructor/analytics", async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getInstructorAnalytics(
+    db.collection("transactions"),
+    db.collection("courses")
+  )(req, res);
 });
 
 // ── Admin Course Routes ───────────────────────────────────────────────────────
