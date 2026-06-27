@@ -35,6 +35,7 @@ const { getEnrolledCourses } = require("./actions/myLearning");
 const { submitCourseReviewAndRating } = require("./actions/courseReview");
 const { getCourseReviews } = require("./actions/getReviews");
 const { updateUserProfile } = require("./actions/userProfile");
+const { getInstructorEnrolledStudents } = require("./actions/instructorStudents");
 
 const app = express();
 
@@ -232,6 +233,12 @@ app.patch(
 app.patch("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
   return updateCourse(db.collection("courses"))(req, res);
+});
+
+// ── Instructor Routes ─────────────────────────────────────────────────────────
+app.get("/api/instructor/course-students", async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getInstructorEnrolledStudents(db.collection("transactions"))(req, res);
 });
 
 // ── Admin Course Routes ───────────────────────────────────────────────────────
