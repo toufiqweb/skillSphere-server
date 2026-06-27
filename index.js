@@ -31,6 +31,7 @@ const {
   getWishlist,
   getWishlistIds,
 } = require("./actions/wishlist");
+const { getEnrolledCourses } = require("./actions/myLearning");
 
 const app = express();
 
@@ -278,6 +279,11 @@ app.get("/api/student/wishlist/ids", studentMiddleware, async (req, res) => {
 app.get("/api/student/wishlist", studentMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
   return getWishlist(db.collection("wishlist"))(req, res);
+});
+
+app.get("/api/student/my-learning", studentMiddleware, async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getEnrolledCourses(db.collection("transactions"), db.collection("courses"))(req, res);
 });
 
 // ── Enrollment Routes ────────────────────────────────────────────────────────
