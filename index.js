@@ -32,7 +32,8 @@ const {
   getWishlistIds,
 } = require("./actions/wishlist");
 const { getEnrolledCourses } = require("./actions/myLearning");
-const { submitCourseRating } = require("./actions/courseRating");
+const { submitCourseReviewAndRating } = require("./actions/courseReview");
+const { getCourseReviews } = require("./actions/getReviews");
 
 const app = express();
 
@@ -201,6 +202,11 @@ app.get("/api/courses/:id", async (req, res) => {
   return getCourseById(db.collection("courses"))(req, res);
 });
 
+app.get("/api/courses/:id/reviews", async (req, res) => {
+  const { db } = await connectToDatabase();
+  return getCourseReviews(db.collection("reviews"))(req, res);
+});
+
 app.delete("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
   return deleteCourse(db.collection("courses"))(req, res);
@@ -287,9 +293,9 @@ app.get("/api/student/my-learning", studentMiddleware, async (req, res) => {
   return getEnrolledCourses(db.collection("transactions"), db.collection("courses"))(req, res);
 });
 
-app.post("/api/courses/rate", studentMiddleware, async (req, res) => {
+app.post("/api/courses/review", studentMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
-  return submitCourseRating(db.collection("courses"), db.collection("transactions"))(req, res);
+  return submitCourseReviewAndRating(db.collection("courses"), db.collection("transactions"), db.collection("reviews"))(req, res);
 });
 
 // ── Enrollment Routes ────────────────────────────────────────────────────────
