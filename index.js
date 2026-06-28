@@ -37,6 +37,8 @@ const { getCourseReviews } = require("./actions/getReviews");
 const { updateUserProfile } = require("./actions/userProfile");
 const { getInstructorEnrolledStudents } = require("./actions/instructorStudents");
 const { getInstructorAnalytics } = require("./actions/instructorAnalytics");
+const { getAllReviewsForModeration } = require("./actions/manageReviewsFetch");
+const { deleteInappropriateReview } = require("./actions/manageReviewsDelete");
 
 const app = express();
 
@@ -281,10 +283,26 @@ app.patch("/api/admin/users/:id/role", adminMiddleware, async (req, res) => {
   return updateUserRole(db.collection("user"))(req, res);
 });
 
-app.patch("/api/admin/users/:id/block", adminMiddleware, async (req, res) => {
+app.patch(
+  "/api/admin/users/:id/block",
+  adminMiddleware,
+  async (req, res) => {
+    const { db } = await connectToDatabase();
+    return toggleUserBlock(db.collection("user"))(req, res);
+  }
+);
+
+// ── Admin Review Moderation Routes ─────────────────────────────────────────────
+app.get("/api/admin/reviews", adminMiddleware, async (req, res) => {
   const { db } = await connectToDatabase();
-  return toggleUserBlock(db.collection("user"))(req, res);
+  return getAllReviewsForModeration(db.collection("reviews"))(req, res);
 });
+
+app.delete("/api/admin/reviews/:id", adminMiddleware, async (req, res) => {
+  const { db } = await connectToDatabase();
+  return deleteInappropriateReview(db.collection("reviews"), db.collection("courses"))(req, res);
+});
+
 
 // ── Student Wishlist Routes ───────────────────────────────────────────────────
 // POST   /api/student/wishlist/toggle  — add or remove a course from wishlist
