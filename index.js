@@ -4,13 +4,13 @@ require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 // All requires at top level — never inside async functions
-const { isAdmin } = require("./middlewares/isAdmin");
-const { isNotBlocked } = require("./middlewares/isNotBlocked");
+const { isAdmin } = require("./middlewares/isAdmin.js");
+const { isNotBlocked } = require("./middlewares/isNotBlocked.js");
 const {
   getPendingCourses,
   getAllCoursesForAdmin,
   approveOrRejectCourse,
-} = require("./actions/admin");
+} = require("./actions/admin.js");
 const {
   createCourse,
   getCourses,
@@ -20,25 +20,34 @@ const {
   updateCourse,
   getPublicCourses,
   toggleCourseStatus,
-} = require("./actions/course");
+} = require("./actions/course.js");
 const {
   getAllUsers,
   updateUserRole,
   toggleUserBlock,
-} = require("./actions/adminUsers");
+} = require("./actions/adminUsers.js");
 const {
   toggleWishlist,
   getWishlist,
   getWishlistIds,
-} = require("./actions/wishlist");
-const { getEnrolledCourses } = require("./actions/myLearning");
-const { submitCourseReviewAndRating } = require("./actions/courseReview");
-const { getCourseReviews } = require("./actions/getReviews");
-const { updateUserProfile } = require("./actions/userProfile");
-const { getInstructorEnrolledStudents } = require("./actions/instructorStudents");
-const { getInstructorAnalytics } = require("./actions/instructorAnalytics");
-const { getAllReviewsForModeration } = require("./actions/manageReviewsFetch");
-const { deleteInappropriateReview } = require("./actions/manageReviewsDelete");
+} = require("./actions/wishlist.js");
+const { getEnrolledCourses } = require("./actions/myLearning.js");
+const { submitCourseReviewAndRating } = require("./actions/courseReview.js");
+const { getCourseReviews } = require("./actions/getReviews.js");
+const { updateUserProfile } = require("./actions/userProfile.js");
+const {
+  getInstructorEnrolledStudents,
+} = require("./actions/instructorStudents.js");
+const { getInstructorAnalytics } = require("./actions/instructorAnalytics.js");
+const {
+  getAllReviewsForModeration,
+} = require("./actions/manageReviewsFetch.js");
+const {
+  deleteInappropriateReview,
+} = require("./actions/manageReviewsDelete.js");
+const {
+  getPlatformWideAnalytics,
+} = require("./actions/adminPlatformAnalytics.js");
 
 const app = express();
 
@@ -105,11 +114,24 @@ async function connectToDatabase() {
   return { client, db };
 }
 
+// Helper to reuse collections safely
+const getCollections = async () => {
+  const { db } = await connectToDatabase();
+  return {
+    usersCollection: db.collection("user"),
+    coursesCollection: db.collection("courses"),
+    transactionsCollection: db.collection("transactions"),
+    reviewsCollection: db.collection("reviews"),
+    wishlistCollection: db.collection("wishlist"),
+    enrollmentsCollection: db.collection("enrollments"),
+  };
+};
+
 // ── Middleware wrappers (connect lazily per request) ──────────────────────────
 const blockCheckMiddleware = async (req, res, next) => {
   try {
-    const { db } = await connectToDatabase();
-    return isNotBlocked(db.collection("user"))(req, res, next);
+    const { usersCollection } = await getCollections();
+    return isNotBlocked(usersCollection)(req, res, next);
   } catch (err) {
     next(err);
   }
@@ -117,8 +139,8 @@ const blockCheckMiddleware = async (req, res, next) => {
 
 const adminMiddleware = async (req, res, next) => {
   try {
-    const { db } = await connectToDatabase();
-    return isAdmin(db.collection("user"))(req, res, next);
+    const { usersCollection } = await getCollections();
+    return isAdmin(usersCollection)(req, res, next);
   } catch (err) {
     next(err);
   }
@@ -135,18 +157,20 @@ const studentMiddleware = async (req, res, next) => {
       });
     }
 
-    const { db } = await connectToDatabase();
+    const { usersCollection } = await getCollections();
     let user = null;
 
     if (ObjectId.isValid(rawUserId)) {
-      user = await db.collection("user").findOne({ _id: new ObjectId(rawUserId) });
+      user = await usersCollection.findOne({ _id: new ObjectId(rawUserId) });
     }
     if (!user) {
-      user = await db.collection("user").findOne({ id: parseInt(rawUserId, 10) });
+      user = await usersCollection.findOne({ id: parseInt(rawUserId, 10) });
     }
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
     }
     if (user.role !== "student") {
       return res.status(403).json({
@@ -170,8 +194,8 @@ app.get("/", (req, res) => {
 // ── User Routes ───────────────────────────────────────────────────────────────
 app.get("/api/users", async (req, res) => {
   try {
-    const { db } = await connectToDatabase();
-    const result = await db.collection("user").find().toArray();
+    const { usersCollection } = await getCollections();
+    const result = await usersCollection.find().toArray();
     res.json(result);
   } catch (error) {
     console.error("GET /api/users error:", error);
@@ -180,46 +204,46 @@ app.get("/api/users", async (req, res) => {
 });
 
 app.put("/api/user/profile", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return updateUserProfile(db.collection("user"))(req, res);
+  const { usersCollection } = await getCollections();
+  return updateUserProfile(usersCollection)(req, res);
 });
 
 // ── Course Routes ─────────────────────────────────────────────────────────────
 app.post("/api/courses", blockCheckMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return createCourse(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return createCourse(coursesCollection)(req, res);
 });
 
 app.get("/api/courses", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getCourses(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getCourses(coursesCollection)(req, res);
 });
 
 app.get("/api/public/courses", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getPublicCourses(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getPublicCourses(coursesCollection)(req, res);
 });
 
 // IMPORTANT: Specific sub-paths must come BEFORE the generic /:id route
 // to prevent Express from treating "instructor" as an :id value
 app.get("/api/courses/instructor/:instructorId", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getCoursesByInstructor(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getCoursesByInstructor(coursesCollection)(req, res);
 });
 
 app.get("/api/courses/:id", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getCourseById(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getCourseById(coursesCollection)(req, res);
 });
 
 app.get("/api/courses/:id/reviews", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getCourseReviews(db.collection("reviews"))(req, res);
+  const { reviewsCollection } = await getCollections();
+  return getCourseReviews(reviewsCollection)(req, res);
 });
 
 app.delete("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return deleteCourse(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return deleteCourse(coursesCollection)(req, res);
 });
 
 // IMPORTANT: /toggle-status must come BEFORE the generic /:id PATCH
@@ -228,114 +252,131 @@ app.patch(
   "/api/courses/:id/toggle-status",
   blockCheckMiddleware,
   async (req, res) => {
-    const { db } = await connectToDatabase();
-    return toggleCourseStatus(db.collection("courses"))(req, res);
+    const { coursesCollection } = await getCollections();
+    return toggleCourseStatus(coursesCollection)(req, res);
   },
 );
 
 app.patch("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return updateCourse(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return updateCourse(coursesCollection)(req, res);
 });
 
 // ── Instructor Routes ─────────────────────────────────────────────────────────
 app.get("/api/instructor/course-students", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getInstructorEnrolledStudents(db.collection("transactions"))(req, res);
+  const { transactionsCollection } = await getCollections();
+  return getInstructorEnrolledStudents(transactionsCollection)(req, res);
 });
 
 app.get("/api/instructor/analytics", async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getInstructorAnalytics(
-    db.collection("transactions"),
-    db.collection("courses")
-  )(req, res);
+  const { transactionsCollection, coursesCollection } = await getCollections();
+  return getInstructorAnalytics(transactionsCollection, coursesCollection)(
+    req,
+    res,
+  );
 });
 
 // ── Admin Course Routes ───────────────────────────────────────────────────────
 app.get("/api/admin/courses/pending", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getPendingCourses(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getPendingCourses(coursesCollection)(req, res);
 });
 
 app.get("/api/admin/courses", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getAllCoursesForAdmin(db.collection("courses"))(req, res);
+  const { coursesCollection } = await getCollections();
+  return getAllCoursesForAdmin(coursesCollection)(req, res);
 });
 
 app.patch(
   "/api/admin/courses/:id/approval",
   adminMiddleware,
   async (req, res) => {
-    const { db } = await connectToDatabase();
-    return approveOrRejectCourse(db.collection("courses"))(req, res);
+    const { coursesCollection } = await getCollections();
+    return approveOrRejectCourse(coursesCollection)(req, res);
   },
 );
 
+app.get("/api/admin/platform-analytics", adminMiddleware, async (req, res) => {
+  const { usersCollection, coursesCollection, transactionsCollection } =
+    await getCollections();
+  return getPlatformWideAnalytics(
+    usersCollection,
+    coursesCollection,
+    transactionsCollection,
+  )(req, res);
+});
+
 // ── Admin User Management Routes ──────────────────────────────────────────────
 app.get("/api/admin/users", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getAllUsers(db.collection("user"))(req, res);
+  const { usersCollection } = await getCollections();
+  return getAllUsers(usersCollection)(req, res);
 });
 
 app.patch("/api/admin/users/:id/role", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return updateUserRole(db.collection("user"))(req, res);
+  const { usersCollection } = await getCollections();
+  return updateUserRole(usersCollection)(req, res);
 });
 
-app.patch(
-  "/api/admin/users/:id/block",
-  adminMiddleware,
-  async (req, res) => {
-    const { db } = await connectToDatabase();
-    return toggleUserBlock(db.collection("user"))(req, res);
-  }
-);
+app.patch("/api/admin/users/:id/block", adminMiddleware, async (req, res) => {
+  const { usersCollection } = await getCollections();
+  return toggleUserBlock(usersCollection)(req, res);
+});
 
 // ── Admin Review Moderation Routes ─────────────────────────────────────────────
 app.get("/api/admin/reviews", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getAllReviewsForModeration(db.collection("reviews"))(req, res);
+  const { reviewsCollection } = await getCollections();
+  return getAllReviewsForModeration(reviewsCollection)(req, res);
 });
 
 app.delete("/api/admin/reviews/:id", adminMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return deleteInappropriateReview(db.collection("reviews"), db.collection("courses"))(req, res);
+  const { reviewsCollection, coursesCollection } = await getCollections();
+  return deleteInappropriateReview(reviewsCollection, coursesCollection)(
+    req,
+    res,
+  );
 });
-
 
 // ── Student Wishlist Routes ───────────────────────────────────────────────────
 // POST   /api/student/wishlist/toggle  — add or remove a course from wishlist
 // GET    /api/student/wishlist/ids     — lightweight: return only courseId strings
 // GET    /api/student/wishlist         — full wishlist with populated course data
 
-app.post("/api/student/wishlist/toggle", studentMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return toggleWishlist(
-    db.collection("wishlist"),
-    db.collection("courses")
-  )(req, res);
-});
+app.post(
+  "/api/student/wishlist/toggle",
+  studentMiddleware,
+  async (req, res) => {
+    const { wishlistCollection, coursesCollection } = await getCollections();
+    return toggleWishlist(wishlistCollection, coursesCollection)(req, res);
+  },
+);
 
 // IMPORTANT: /ids must be declared before the bare /wishlist GET
 app.get("/api/student/wishlist/ids", studentMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getWishlistIds(db.collection("wishlist"))(req, res);
+  const { wishlistCollection } = await getCollections();
+  return getWishlistIds(wishlistCollection)(req, res);
 });
 
 app.get("/api/student/wishlist", studentMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getWishlist(db.collection("wishlist"))(req, res);
+  const { wishlistCollection } = await getCollections();
+  return getWishlist(wishlistCollection)(req, res);
 });
 
 app.get("/api/student/my-learning", studentMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return getEnrolledCourses(db.collection("transactions"), db.collection("courses"))(req, res);
+  const { transactionsCollection, coursesCollection } = await getCollections();
+  return getEnrolledCourses(transactionsCollection, coursesCollection)(
+    req,
+    res,
+  );
 });
 
 app.post("/api/courses/review", studentMiddleware, async (req, res) => {
-  const { db } = await connectToDatabase();
-  return submitCourseReviewAndRating(db.collection("courses"), db.collection("transactions"), db.collection("reviews"))(req, res);
+  const { coursesCollection, transactionsCollection, reviewsCollection } =
+    await getCollections();
+  return submitCourseReviewAndRating(
+    coursesCollection,
+    transactionsCollection,
+    reviewsCollection,
+  )(req, res);
 });
 
 // ── Enrollment Routes ────────────────────────────────────────────────────────
@@ -343,11 +384,12 @@ app.get("/api/enrollments/check", async (req, res) => {
   try {
     const { userId, courseId } = req.query;
     if (!userId || !courseId) {
-      return res.status(400).json({ isEnrolled: false, message: "Missing params" });
+      return res
+        .status(400)
+        .json({ isEnrolled: false, message: "Missing params" });
     }
-    const { db } = await connectToDatabase();
-    const enrollmentsCollection = db.collection("enrollments");
-    
+    const { enrollmentsCollection } = await getCollections();
+
     const existing = await enrollmentsCollection.findOne({ userId, courseId });
     return res.json({ isEnrolled: !!existing });
   } catch (err) {
@@ -379,15 +421,15 @@ app.post("/api/transactions", async (req, res) => {
       });
     }
 
-    const { db } = await connectToDatabase();
-    const transactionsCollection = db.collection("transactions");
-    const enrollmentsCollection = db.collection("enrollments");
-    const coursesCollection = db.collection("courses");
+    const { transactionsCollection, enrollmentsCollection, coursesCollection } =
+      await getCollections();
     const { ObjectId } = require("mongodb");
 
     // ── 1. Duplicate Transaction Protection ──────────────────────────────────
     // Prevent duplicate DB writes on browser refresh or double-submission.
-    const existingTransaction = await transactionsCollection.findOne({ stripeSessionId });
+    const existingTransaction = await transactionsCollection.findOne({
+      stripeSessionId,
+    });
     if (existingTransaction) {
       return res.status(400).json({
         success: false,
@@ -423,15 +465,16 @@ app.post("/api/transactions", async (req, res) => {
     // ── 4. Update Course Enrollment Count ────────────────────────────────────
     await coursesCollection.updateOne(
       { _id: new ObjectId(courseId) },
-      { $inc: { enrolledStudents: 1 } }
+      { $inc: { enrolledStudents: 1 } },
     );
 
     return res.json({ success: true, message: "Enrolled successfully." });
   } catch (err) {
     console.error("POST /api/transactions error:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Internal server error",
+    });
   }
 });
 
