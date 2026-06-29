@@ -75,33 +75,61 @@ const submitCourseReviewAndRating =
           .json({ success: false, message: "Course not found." });
       }
 
-      // 3. Insert Review Document
-      const reviewDoc = {
-        courseId: ObjectId.isValid(courseId)
-          ? new ObjectId(courseId)
-          : courseId,
-        userId: ObjectId.isValid(rawUserId)
-          ? new ObjectId(rawUserId)
-          : rawUserId,
-        userName: userName,
-        userEmail: userEmail,
-        rating: Number(ratingValue),
-        message: reviewMessage.trim(),
-        createdAt: new Date().toISOString(),
-      };
-      await reviewsCollection.insertOne(reviewDoc);
+      // 3. Check for existing review
+      const courseIdObj = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+      const userIdObj = ObjectId.isValid(rawUserId) ? new ObjectId(rawUserId) : rawUserId;
 
-      // 4. Mathematical Update
+      const existingReview = await reviewsCollection.findOne({
+        courseId: courseIdObj,
+        userId: userIdObj,
+      });
+
       const oldCount = course.totalRatingsCount || course.ratingCount || 0;
       const oldAvg = course.rating || course.averageRating || 0;
+      let newCount = oldCount;
+      let newAvg = oldAvg;
 
-      const newCount = oldCount + 1;
-      let newAvg = (oldAvg * oldCount + ratingValue) / newCount;
+      if (existingReview) {
+        // Update existing review
+        await reviewsCollection.updateOne(
+          { _id: existingReview._id },
+          {
+            $set: {
+              rating: Number(ratingValue),
+              message: reviewMessage.trim(),
+              updatedAt: new Date().toISOString(),
+            },
+          }
+        );
+
+        // Mathematical Update: subtract old rating, add new rating
+        if (oldCount > 0) {
+          newAvg = (oldAvg * oldCount - existingReview.rating + ratingValue) / oldCount;
+        } else {
+          newAvg = ratingValue;
+        }
+      } else {
+        // Insert new review
+        const reviewDoc = {
+          courseId: courseIdObj,
+          userId: userIdObj,
+          userName: userName,
+          userEmail: userEmail,
+          rating: Number(ratingValue),
+          message: reviewMessage.trim(),
+          createdAt: new Date().toISOString(),
+        };
+        await reviewsCollection.insertOne(reviewDoc);
+
+        // Mathematical Update
+        newCount = oldCount + 1;
+        newAvg = (oldAvg * oldCount + ratingValue) / newCount;
+      }
+
       // Round to 1 decimal place
       newAvg = Math.round(newAvg * 10) / 10;
 
       // 5. Save back to database
-      // We update both rating/ratingCount and averageRating/totalRatingsCount to ensure compatibility with both schemas
       await coursesCollection.updateOne(query, {
         $set: {
           rating: newAvg,
@@ -113,7 +141,7 @@ const submitCourseReviewAndRating =
 
       return res.json({
         success: true,
-        message: "Review submitted successfully!",
+        message: existingReview ? "Review updated successfully!" : "Review submitted successfully!",
         newAverageRating: newAvg,
         newTotalRatingsCount: newCount,
       });
