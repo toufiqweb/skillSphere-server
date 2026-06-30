@@ -188,7 +188,7 @@ const studentMiddleware = async (req, res, next) => {
 
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
-  res.send("SkillSphere server is running");
+  res.send("VectraLern server is running");
 });
 
 // ── User Routes ───────────────────────────────────────────────────────────────
@@ -492,7 +492,7 @@ app.use((err, req, res, next) => {
 if (process.env.NODE_ENV !== "production") {
   const port = process.env.PORT || 5000;
   app.listen(port, () => {
-    console.log(`SkillSphere server is running on port ${port}`);
+    console.log(`VectraLern server is running on port ${port}`);
   });
 }
 
