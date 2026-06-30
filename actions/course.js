@@ -1,5 +1,24 @@
 const { ObjectId } = require("mongodb");
 
+const generateUniqueSlug = async (title, coursesCollection) => {
+  let baseSlug = String(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+
+  if (!baseSlug) baseSlug = "course";
+
+  let uniqueSlug = baseSlug;
+  let counter = 1;
+
+  while (await coursesCollection.findOne({ slug: uniqueSlug })) {
+    uniqueSlug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+
+  return uniqueSlug;
+};
+
 // 1. POST - Create Course (/api/courses)
 const createCourse = (coursesCollection) => async (req, res) => {
   try {
@@ -20,9 +39,13 @@ const createCourse = (coursesCollection) => async (req, res) => {
       });
     }
 
+    // Generate slug from title
+    const slug = await generateUniqueSlug(courseData.title, coursesCollection);
+
     // Force inject default values on the server side
     const courseToSave = {
       ...courseData,
+      slug,
       lessons: Number(courseData.lessons) || 0,
       price: Number(courseData.price),
       originalPrice: courseData.originalPrice
@@ -151,9 +174,14 @@ const getCourseById = (coursesCollection) => async (req, res) => {
   try {
     const id = req.params.id;
 
-    // Try searching by numeric id first
-    let query = { id: parseInt(id, 10) };
+    // Try searching by slug first
+    let query = { slug: id };
     let course = await coursesCollection.findOne(query);
+
+    // Try searching by numeric id
+    if (!course && !isNaN(parseInt(id, 10))) {
+      course = await coursesCollection.findOne({ id: parseInt(id, 10) });
+    }
 
     // Fallback to ObjectId if it's a valid MongoDB ID
     if (!course && ObjectId.isValid(id)) {
@@ -341,6 +369,11 @@ const updateCourse = (coursesCollection) => async (req, res) => {
     delete updateFields._id;
     delete updateFields.id;
     delete updateFields.instructor;
+    
+    // Check if title is updated and update the slug accordingly
+    if (updateFields.title && updateFields.title !== course.title) {
+      updateFields.slug = await generateUniqueSlug(updateFields.title, coursesCollection);
+    }
 
     // Update using $set
     const result = await coursesCollection.updateOne(query, {
