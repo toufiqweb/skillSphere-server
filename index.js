@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 
 // All requires at top level — never inside async functions
 const { isAdmin } = require("./middlewares/isAdmin.js");
@@ -79,8 +80,35 @@ app.use(
     credentials: true,
   }),
 );
-
 app.use(express.json());
+
+//_________JWT Authentication_________
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.ALLOWED_ORIGIN}/api/auth/jwks`),
+);
+
+const verifyToken = async (req, res, next) => {
+  const header = req.headers.authorization;
+  // console.log(header);
+
+  if (!header) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  const token = header.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+    console.log(payload);
+
+    next();
+  } catch (error) {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+};
 
 // ── MongoDB Connection Caching ─────────────────────────────────────────────────
 let cachedClient = null;
@@ -192,7 +220,7 @@ app.get("/", (req, res) => {
 });
 
 // ── User Routes ───────────────────────────────────────────────────────────────
-app.get("/api/users", async (req, res) => {
+app.get("/api/users", verifyToken, async (req, res) => {
   try {
     const { usersCollection } = await getCollections();
     const result = await usersCollection.find().toArray();
@@ -203,16 +231,21 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
-app.put("/api/user/profile", async (req, res) => {
+app.put("/api/user/profile", verifyToken, async (req, res) => {
   const { usersCollection } = await getCollections();
   return updateUserProfile(usersCollection)(req, res);
 });
 
 // ── Course Routes ─────────────────────────────────────────────────────────────
-app.post("/api/courses", blockCheckMiddleware, async (req, res) => {
-  const { coursesCollection } = await getCollections();
-  return createCourse(coursesCollection)(req, res);
-});
+app.post(
+  "/api/courses",
+  verifyToken,
+  blockCheckMiddleware,
+  async (req, res) => {
+    const { coursesCollection } = await getCollections();
+    return createCourse(coursesCollection)(req, res);
+  },
+);
 
 app.get("/api/courses", async (req, res) => {
   const { coursesCollection } = await getCollections();
@@ -241,15 +274,21 @@ app.get("/api/courses/:id/reviews", async (req, res) => {
   return getCourseReviews(reviewsCollection)(req, res);
 });
 
-app.delete("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
-  const { coursesCollection } = await getCollections();
-  return deleteCourse(coursesCollection)(req, res);
-});
+app.delete(
+  "/api/courses/:id",
+  verifyToken,
+  blockCheckMiddleware,
+  async (req, res) => {
+    const { coursesCollection } = await getCollections();
+    return deleteCourse(coursesCollection)(req, res);
+  },
+);
 
 // IMPORTANT: /toggle-status must come BEFORE the generic /:id PATCH
 // to prevent Express from matching "toggle-status" as the second :id param
 app.patch(
   "/api/courses/:id/toggle-status",
+  verifyToken,
   blockCheckMiddleware,
   async (req, res) => {
     const { coursesCollection } = await getCollections();
@@ -257,18 +296,23 @@ app.patch(
   },
 );
 
-app.patch("/api/courses/:id", blockCheckMiddleware, async (req, res) => {
-  const { coursesCollection } = await getCollections();
-  return updateCourse(coursesCollection)(req, res);
-});
+app.patch(
+  "/api/courses/:id",
+  verifyToken,
+  blockCheckMiddleware,
+  async (req, res) => {
+    const { coursesCollection } = await getCollections();
+    return updateCourse(coursesCollection)(req, res);
+  },
+);
 
 // ── Instructor Routes ─────────────────────────────────────────────────────────
-app.get("/api/instructor/course-students", async (req, res) => {
+app.get("/api/instructor/course-students", verifyToken, async (req, res) => {
   const { transactionsCollection } = await getCollections();
   return getInstructorEnrolledStudents(transactionsCollection)(req, res);
 });
 
-app.get("/api/instructor/analytics", async (req, res) => {
+app.get("/api/instructor/analytics", verifyToken, async (req, res) => {
   const { transactionsCollection, coursesCollection } = await getCollections();
   return getInstructorAnalytics(transactionsCollection, coursesCollection)(
     req,
@@ -277,18 +321,29 @@ app.get("/api/instructor/analytics", async (req, res) => {
 });
 
 // ── Admin Course Routes ───────────────────────────────────────────────────────
-app.get("/api/admin/courses/pending", adminMiddleware, async (req, res) => {
-  const { coursesCollection } = await getCollections();
-  return getPendingCourses(coursesCollection)(req, res);
-});
+app.get(
+  "/api/admin/courses/pending",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { coursesCollection } = await getCollections();
+    return getPendingCourses(coursesCollection)(req, res);
+  },
+);
 
-app.get("/api/admin/courses", adminMiddleware, async (req, res) => {
-  const { coursesCollection } = await getCollections();
-  return getAllCoursesForAdmin(coursesCollection)(req, res);
-});
+app.get(
+  "/api/admin/courses",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { coursesCollection } = await getCollections();
+    return getAllCoursesForAdmin(coursesCollection)(req, res);
+  },
+);
 
 app.patch(
   "/api/admin/courses/:id/approval",
+  verifyToken,
   adminMiddleware,
   async (req, res) => {
     const { coursesCollection } = await getCollections();
@@ -296,45 +351,70 @@ app.patch(
   },
 );
 
-app.get("/api/admin/platform-analytics", adminMiddleware, async (req, res) => {
-  const { usersCollection, coursesCollection, transactionsCollection } =
-    await getCollections();
-  return getPlatformWideAnalytics(
-    usersCollection,
-    coursesCollection,
-    transactionsCollection,
-  )(req, res);
-});
+app.get(
+  "/api/admin/platform-analytics",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { usersCollection, coursesCollection, transactionsCollection } =
+      await getCollections();
+    return getPlatformWideAnalytics(
+      usersCollection,
+      coursesCollection,
+      transactionsCollection,
+    )(req, res);
+  },
+);
 
 // ── Admin User Management Routes ──────────────────────────────────────────────
-app.get("/api/admin/users", adminMiddleware, async (req, res) => {
+app.get("/api/admin/users", verifyToken, adminMiddleware, async (req, res) => {
   const { usersCollection } = await getCollections();
   return getAllUsers(usersCollection)(req, res);
 });
 
-app.patch("/api/admin/users/:id/role", adminMiddleware, async (req, res) => {
-  const { usersCollection } = await getCollections();
-  return updateUserRole(usersCollection)(req, res);
-});
+app.patch(
+  "/api/admin/users/:id/role",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { usersCollection } = await getCollections();
+    return updateUserRole(usersCollection)(req, res);
+  },
+);
 
-app.patch("/api/admin/users/:id/block", adminMiddleware, async (req, res) => {
-  const { usersCollection } = await getCollections();
-  return toggleUserBlock(usersCollection)(req, res);
-});
+app.patch(
+  "/api/admin/users/:id/block",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { usersCollection } = await getCollections();
+    return toggleUserBlock(usersCollection)(req, res);
+  },
+);
 
 // ── Admin Review Moderation Routes ─────────────────────────────────────────────
-app.get("/api/admin/reviews", adminMiddleware, async (req, res) => {
-  const { reviewsCollection } = await getCollections();
-  return getAllReviewsForModeration(reviewsCollection)(req, res);
-});
+app.get(
+  "/api/admin/reviews",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { reviewsCollection } = await getCollections();
+    return getAllReviewsForModeration(reviewsCollection)(req, res);
+  },
+);
 
-app.delete("/api/admin/reviews/:id", adminMiddleware, async (req, res) => {
-  const { reviewsCollection, coursesCollection } = await getCollections();
-  return deleteInappropriateReview(reviewsCollection, coursesCollection)(
-    req,
-    res,
-  );
-});
+app.delete(
+  "/api/admin/reviews/:id",
+  verifyToken,
+  adminMiddleware,
+  async (req, res) => {
+    const { reviewsCollection, coursesCollection } = await getCollections();
+    return deleteInappropriateReview(reviewsCollection, coursesCollection)(
+      req,
+      res,
+    );
+  },
+);
 
 // ── Student Wishlist Routes ───────────────────────────────────────────────────
 // POST   /api/student/wishlist/toggle  — add or remove a course from wishlist
@@ -343,6 +423,7 @@ app.delete("/api/admin/reviews/:id", adminMiddleware, async (req, res) => {
 
 app.post(
   "/api/student/wishlist/toggle",
+  verifyToken,
   studentMiddleware,
   async (req, res) => {
     const { wishlistCollection, coursesCollection } = await getCollections();
@@ -351,36 +432,57 @@ app.post(
 );
 
 // IMPORTANT: /ids must be declared before the bare /wishlist GET
-app.get("/api/student/wishlist/ids", studentMiddleware, async (req, res) => {
-  const { wishlistCollection } = await getCollections();
-  return getWishlistIds(wishlistCollection)(req, res);
-});
+app.get(
+  "/api/student/wishlist/ids",
+  verifyToken,
+  studentMiddleware,
+  async (req, res) => {
+    const { wishlistCollection } = await getCollections();
+    return getWishlistIds(wishlistCollection)(req, res);
+  },
+);
 
-app.get("/api/student/wishlist", studentMiddleware, async (req, res) => {
-  const { wishlistCollection } = await getCollections();
-  return getWishlist(wishlistCollection)(req, res);
-});
+app.get(
+  "/api/student/wishlist",
+  verifyToken,
+  studentMiddleware,
+  async (req, res) => {
+    const { wishlistCollection } = await getCollections();
+    return getWishlist(wishlistCollection)(req, res);
+  },
+);
 
-app.get("/api/student/my-learning", studentMiddleware, async (req, res) => {
-  const { transactionsCollection, coursesCollection } = await getCollections();
-  return getEnrolledCourses(transactionsCollection, coursesCollection)(
-    req,
-    res,
-  );
-});
+app.get(
+  "/api/student/my-learning",
+  verifyToken,
+  studentMiddleware,
+  async (req, res) => {
+    const { transactionsCollection, coursesCollection } =
+      await getCollections();
+    return getEnrolledCourses(transactionsCollection, coursesCollection)(
+      req,
+      res,
+    );
+  },
+);
 
-app.post("/api/courses/review", studentMiddleware, async (req, res) => {
-  const { coursesCollection, transactionsCollection, reviewsCollection } =
-    await getCollections();
-  return submitCourseReviewAndRating(
-    coursesCollection,
-    transactionsCollection,
-    reviewsCollection,
-  )(req, res);
-});
+app.post(
+  "/api/courses/review",
+  verifyToken,
+  studentMiddleware,
+  async (req, res) => {
+    const { coursesCollection, transactionsCollection, reviewsCollection } =
+      await getCollections();
+    return submitCourseReviewAndRating(
+      coursesCollection,
+      transactionsCollection,
+      reviewsCollection,
+    )(req, res);
+  },
+);
 
 // ── Enrollment Routes ────────────────────────────────────────────────────────
-app.get("/api/enrollments/check", async (req, res) => {
+app.get("/api/enrollments/check", verifyToken, async (req, res) => {
   try {
     const { userId, courseId } = req.query;
     if (!userId || !courseId) {
@@ -401,7 +503,7 @@ app.get("/api/enrollments/check", async (req, res) => {
 // ── Transactions (Course Enrollment) ─────────────────────────────────────────
 // Mirrors RapidRole's POST /api/subscriptions pattern exactly.
 // Called by the Next.js createTransaction() Server Action after Stripe payment.
-app.post("/api/transactions", async (req, res) => {
+app.post("/api/transactions", verifyToken, async (req, res) => {
   try {
     const {
       courseId,
